@@ -1,0 +1,32 @@
+# ÚKOL 1
+# Vytvořte vizualizaci dat z ukázkového CSV souboru pomocí knihovny Plotly nebo Seaborn. 
+# Bonus: vytvořte animaci dat v čase.
+
+
+
+import pandas as pd
+import plotly.express as px
+from pathlib import Path
+
+path = Path('DU3') / 'data_temperature.csv'
+
+
+
+# načtení CSV (přeskočí první 3 řádky, oddělovač je ;)
+df = pd.read_csv(path, sep=";", skiprows=3)
+
+# převod číselných hodnot (nahradíme čárku tečkou)
+for col in ["T1 [°C]", "T2 [°C]", "T3 [°C]"]:
+    df[col] = df[col].str.replace(",", ".").astype(float)
+
+# převod sloupce Datum a čas na datetime
+df["Datum a čas"] = pd.to_datetime(df["Datum a čas"], format="%d.%m.%Y %H:%M:%S")
+
+# vykreslení pomocí plotly
+fig = px.line(df, 
+              x="Datum a čas", 
+              y=["T1 [°C]", "T2 [°C]", "T3 [°C]"], 
+              labels={"value": "Teplota [°C]", "variable": "Senzor"},
+              title="Teploty z CSV souboru")
+fig.show()
+
