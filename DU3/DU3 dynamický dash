@@ -1,0 +1,93 @@
+import pandas as pd
+from pathlib import Path
+from datetime import datetime
+
+from dash import Dash, dcc, html, Output, Input
+import plotly.graph_objects as go
+
+# ====== 1) Načtení a příprava dat ======
+path = Path("DU3") / "data_temperature.csv"
+
+# Načti CSV: přeskočí 3 hlavičkové řádky, oddělovač ; 
+df = pd.read_csv(path, sep=";", skiprows=3)
+
+# Ošetři názvy sloupců podle tvého CSV
+TIME_COL = "Datum a čas"
+SENSORS = ["T1 [°C]", "T2 [°C]", "T3 [°C]"]
+
+# Převod času
+df[TIME_COL] = pd.to_datetime(df[TIME_COL], format="%d.%m.%Y %H:%M:%S", errors="coerce")
+
+# Číselné sloupce: nahradit desetinnou čárku tečkou + převod na float
+for col in SENSORS:
+    df[col] = df[col].str.replace(",", ".").astype(float)
+
+TOTAL_ROWS = len(df)
+
+# ====== 2) Dash aplikace ======
+app = Dash(__name__)
+app.title = "Live animace z CSV"
+
+app.layout = html.Div(
+    style={"maxWidth": "1000px", "margin": "0 auto", "fontFamily": "Arial, sans-serif"},
+    children=[
+        html.H2("Teploty z CSV – živá animace"),
+        html.P("Každou sekundu se přidá další bod. Až dojdou data, animace se zastaví."),
+        dcc.Graph(id="temp-graph"),
+        dcc.Interval(id="tick", interval=1000, n_intervals=0),  # 1000 ms = 1 s
+        html.Div(id="info", style={"marginTop": "8px", "color": "#666"})
+    ]
+)
+
+# ====== 3) Callback pro animaci ======
+@app.callback(
+    Output("temp-graph", "figure"),
+    Output("tick", "disabled"),
+    Output("info", "children"),
+    Input("tick", "n_intervals"),
+    prevent_initial_call=False
+)
+def update_chart(n):
+    if TOTAL_ROWS == 0:
+        fig = go.Figure()
+        fig.update_layout(
+            title="Žádná platná data v CSV",
+            xaxis_title="Čas",
+            yaxis_title="Teplota [°C]"
+        )
+        return fig, True, "Nebyla nalezena žádná platná data (zkontroluj hlavičku/sloupce)."
+
+    # Kolik řádků zobrazit (od začátku po aktuální „krok“)
+    rows_to_show = min(n + 1, TOTAL_ROWS)
+    dfi = df.iloc[:rows_to_show]
+
+    # Vytvoř prázdný graf a doplň 3 senzory
+    fig = go.Figure()
+    for sensor in SENSORS:
+        if sensor in dfi.columns:
+            fig.add_trace(go.Scatter(
+                x=dfi[TIME_COL],
+                y=dfi[sensor],
+                mode="lines+markers",
+                name=sensor
+            ))
+
+    fig.update_layout(
+        title="Teploty z CSV souboru (živě)",
+        xaxis_title="Datum a čas",
+        yaxis_title="Teplota [°C]",
+        legend_title="Senzor",
+        margin=dict(l=40, r=20, t=60, b=40),
+    )
+
+    # Zastav interval, když jsme na konci
+    finished = rows_to_show >= TOTAL_ROWS
+    info_text = (
+        f"Zobrazeno {rows_to_show} / {TOTAL_ROWS} řádků."
+        + (" Hotovo. Animace zastavena." if finished else "")
+    )
+    return fig, finished, info_text
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
